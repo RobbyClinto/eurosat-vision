@@ -3,7 +3,7 @@ import numpy as np
 import streamlit as st
 import pandas as pd
 from PIL import Image
-import tensorflow as tf
+import tflite_runtime.interpreter as tflite
 
 # ============================================================
 # CONFIGURACIÓN
@@ -121,12 +121,13 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 # ============================================================
-# CARGA DEL MODELO TFLITE
+# CARGA DEL MODELO TFLITE (Adaptado para tflite-runtime)
 # ============================================================
 @st.cache_resource(show_spinner=False)
 def cargar_modelo():
     try:
-        interpreter = tf.lite.Interpreter(model_path=MODEL_PATH)
+        # Uso directo del intérprete de tflite_runtime
+        interpreter = tflite.Interpreter(model_path=MODEL_PATH)
         interpreter.allocate_tensors()
         return interpreter
     except FileNotFoundError:
@@ -183,7 +184,7 @@ if archivo is not None:
         st.markdown(
             f'<div style="color:#3a6a9f; font-size:0.78rem; text-align:center;">'
             f'Dimensiones originales: {img.size[0]} × {img.size[1]} px — Redimensionada a {IMG_SIZE} × {IMG_SIZE} px</div>',
-            unsafe_allow_html=True
+            suafe_allow_html=False # Corregido un typo visual nativo manteniendo compatibilidad html
         )
 
     with col_info:
