@@ -1,9 +1,10 @@
 import time
 import numpy as np
 import streamlit as st
+import tensorflow as tf
 import pandas as pd
 from PIL import Image
-import tflite_runtime.interpreter as tflite
+from tensorflow.keras.preprocessing import image as keras_image
 
 # ============================================================
 # CONFIGURACIÓN
@@ -21,28 +22,105 @@ st.set_page_config(
 st.markdown("""
 <style>
 @import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;600&display=swap');
+
 * { font-family: 'Space Grotesk', sans-serif; }
 code, .mono { font-family: 'JetBrains Mono', monospace; }
-.stApp { background: linear-gradient(135deg, #060b14 0%, #0d1b2a 50%, #060b14 100%); color: #e8edf2; }
-section[data-testid="stSidebar"] { background: linear-gradient(180deg, #0a1628 0%, #0d1f35 100%); border-right: 1px solid #1e3a5f; }
+
+.stApp {
+    background: linear-gradient(135deg, #060b14 0%, #0d1b2a 50%, #060b14 100%);
+    color: #e8edf2;
+}
+section[data-testid="stSidebar"] {
+    background: linear-gradient(180deg, #0a1628 0%, #0d1f35 100%);
+    border-right: 1px solid #1e3a5f;
+}
 header[data-testid="stHeader"] { background: transparent; }
 #MainMenu, footer { visibility: hidden; }
-.hero-banner { background: linear-gradient(135deg, #0a1628 0%, #0d2545 40%, #0a3060 100%); border: 1px solid #1e4080; border-radius: 16px; padding: 2.5rem 3rem; margin-bottom: 2rem; position: relative; overflow: hidden; }
-.hero-banner::before { content: ''; position: absolute; top: -50%; right: -20%; width: 400px; height: 400px; background: radial-gradient(circle, rgba(0,180,255,0.08) 0%, transparent 70%); border-radius: 50%; }
-.hero-title { font-size: 2.2rem; font-weight: 700; background: linear-gradient(90deg, #00c8ff, #0080ff, #00c8ff); background-size: 200% auto; -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text; animation: shine 3s linear infinite; margin: 0 0 0.5rem 0; }
+
+.hero-banner {
+    background: linear-gradient(135deg, #0a1628 0%, #0d2545 40%, #0a3060 100%);
+    border: 1px solid #1e4080;
+    border-radius: 16px;
+    padding: 2.5rem 3rem;
+    margin-bottom: 2rem;
+    position: relative;
+    overflow: hidden;
+}
+.hero-banner::before {
+    content: '';
+    position: absolute;
+    top: -50%;
+    right: -20%;
+    width: 400px;
+    height: 400px;
+    background: radial-gradient(circle, rgba(0,180,255,0.08) 0%, transparent 70%);
+    border-radius: 50%;
+}
+.hero-title {
+    font-size: 2.2rem;
+    font-weight: 700;
+    background: linear-gradient(90deg, #00c8ff, #0080ff, #00c8ff);
+    background-size: 200% auto;
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+    animation: shine 3s linear infinite;
+    margin: 0 0 0.5rem 0;
+}
 @keyframes shine { to { background-position: 200% center; } }
 .hero-subtitle { color: #7a9bbf; font-size: 0.95rem; font-weight: 400; margin: 0; }
-.hero-badge { display: inline-block; background: rgba(0,180,255,0.1); border: 1px solid rgba(0,180,255,0.3); color: #00c8ff; padding: 0.2rem 0.8rem; border-radius: 20px; font-size: 0.75rem; font-weight: 600; letter-spacing: 0.05em; margin-bottom: 1rem; }
-.metric-card { background: linear-gradient(135deg, #0d1f35 0%, #0a2040 100%); border: 1px solid #1e3a5f; border-radius: 12px; padding: 1.2rem 1.5rem; text-align: center; }
+.hero-badge {
+    display: inline-block;
+    background: rgba(0,180,255,0.1);
+    border: 1px solid rgba(0,180,255,0.3);
+    color: #00c8ff;
+    padding: 0.2rem 0.8rem;
+    border-radius: 20px;
+    font-size: 0.75rem;
+    font-weight: 600;
+    letter-spacing: 0.05em;
+    margin-bottom: 1rem;
+}
+.metric-card {
+    background: linear-gradient(135deg, #0d1f35 0%, #0a2040 100%);
+    border: 1px solid #1e3a5f;
+    border-radius: 12px;
+    padding: 1.2rem 1.5rem;
+    text-align: center;
+}
 .metric-label { color: #5a7a9f; font-size: 0.75rem; font-weight: 600; letter-spacing: 0.1em; text-transform: uppercase; margin-bottom: 0.4rem; }
 .metric-value { color: #00c8ff; font-size: 1.8rem; font-weight: 700; font-family: 'JetBrains Mono', monospace; }
 .metric-unit { color: #7a9bbf; font-size: 0.8rem; margin-top: 0.2rem; }
-.result-card { background: linear-gradient(135deg, #0a2a1a 0%, #0d3520 100%); border: 1px solid #1a5a30; border-left: 4px solid #00ff88; border-radius: 12px; padding: 1.5rem 2rem; margin: 1.5rem 0; }
+.result-card {
+    background: linear-gradient(135deg, #0a2a1a 0%, #0d3520 100%);
+    border: 1px solid #1a5a30;
+    border-left: 4px solid #00ff88;
+    border-radius: 12px;
+    padding: 1.5rem 2rem;
+    margin: 1.5rem 0;
+}
 .result-class { font-size: 1.6rem; font-weight: 700; color: #00ff88; margin: 0 0 0.3rem 0; }
 .result-desc { color: #7abf9f; font-size: 0.9rem; }
-.info-card { background: rgba(0,100,200,0.08); border: 1px solid rgba(0,150,255,0.2); border-radius: 10px; padding: 1rem 1.5rem; margin: 1rem 0; color: #7ab0d0; font-size: 0.85rem; }
-.custom-divider { height: 1px; background: linear-gradient(90deg, transparent, #1e3a5f, transparent); margin: 2rem 0; }
-.sidebar-item { color: #8aabcf; font-size: 0.82rem; padding: 0.25rem 0; border-bottom: 1px solid rgba(255,255,255,0.04); }
+.info-card {
+    background: rgba(0,100,200,0.08);
+    border: 1px solid rgba(0,150,255,0.2);
+    border-radius: 10px;
+    padding: 1rem 1.5rem;
+    margin: 1rem 0;
+    color: #7ab0d0;
+    font-size: 0.85rem;
+}
+.custom-divider {
+    height: 1px;
+    background: linear-gradient(90deg, transparent, #1e3a5f, transparent);
+    margin: 2rem 0;
+}
+.sidebar-item {
+    color: #8aabcf;
+    font-size: 0.82rem;
+    padding: 0.25rem 0;
+    border-bottom: 1px solid rgba(255,255,255,0.04);
+}
 .sidebar-item:last-child { border-bottom: none; }
 </style>
 """, unsafe_allow_html=True)
@@ -50,8 +128,8 @@ header[data-testid="stHeader"] { background: transparent; }
 # ============================================================
 # CONSTANTES
 # ============================================================
-MODEL_PATH = "modelo_eurosat.tflite"
-IMG_SIZE = 224
+MODEL_PATH = "modelo_final_eurosat.keras"
+IMG_SIZE   = 224
 
 CLASS_NAMES = [
     "AnnualCrop", "Forest", "HerbaceousVegetation", "Highway",
@@ -86,15 +164,17 @@ with st.sidebar:
 
     st.markdown('<div style="color:#00c8ff; font-size:0.8rem; font-weight:600; letter-spacing:0.1em; text-transform:uppercase; margin-bottom:0.8rem;">📡 Clases del Dataset</div>', unsafe_allow_html=True)
     for name, info in CLASS_INFO.items():
-        st.markdown(f'<div class="sidebar-item">{info["emoji"]} <b style="color:#aac8e8">{info["es"]}</b> — {info["desc"]}</div>', unsafe_allow_html=True)
+        st.markdown(
+            f'<div class="sidebar-item">{info["emoji"]} <b style="color:#aac8e8">{info["es"]}</b> — {info["desc"]}</div>',
+            unsafe_allow_html=True
+        )
 
     st.markdown("<br>", unsafe_allow_html=True)
     st.markdown('<div style="color:#00c8ff; font-size:0.8rem; font-weight:600; letter-spacing:0.1em; text-transform:uppercase; margin-bottom:0.8rem;">🤖 Arquitectura del Modelo</div>', unsafe_allow_html=True)
     for item in [
         ("Base", "EfficientNetB0"), ("Método", "Transfer Learning"),
         ("Ajuste", "Fine-Tuning"),  ("Dataset", "EuroSAT (27k imgs)"),
-        ("Clases", "10 categorías"),("Formato", "TFLite optimizado"),
-        ("Input", "224 × 224 px"),
+        ("Clases", "10 categorías"),("Input", "224 × 224 px"),
     ]:
         st.markdown(f'<div class="sidebar-item">🔹 <b style="color:#aac8e8">{item[0]}:</b> {item[1]}</div>', unsafe_allow_html=True)
 
@@ -121,46 +201,27 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 # ============================================================
-# CARGA DEL MODELO TFLITE (Adaptado para tflite-runtime)
+# CARGA DEL MODELO
 # ============================================================
 @st.cache_resource(show_spinner=False)
 def cargar_modelo():
     try:
-        # Uso directo del intérprete de tflite_runtime
-        interpreter = tflite.Interpreter(model_path=MODEL_PATH)
-        interpreter.allocate_tensors()
-        return interpreter
+        return tf.keras.models.load_model(MODEL_PATH)
     except FileNotFoundError:
         return None
     except Exception as e:
         st.error(f"❌ Error al cargar el modelo: {e}")
         st.stop()
 
-def predecir(interpreter, img_array):
-    input_details  = interpreter.get_input_details()
-    output_details = interpreter.get_output_details()
-
-    # Verificar si el modelo espera float32 o uint8
-    dtype = input_details[0]['dtype']
-    if dtype == np.uint8:
-        img_array = img_array.astype(np.uint8)
-    else:
-        img_array = img_array.astype(np.float32)
-
-    interpreter.set_tensor(input_details[0]['index'], img_array)
-    interpreter.invoke()
-    output = interpreter.get_tensor(output_details[0]['index'])
-    return output
-
-with st.spinner("⏳ Inicializando modelo TFLite..."):
+with st.spinner("⏳ Inicializando modelo EfficientNetB0..."):
     modelo = cargar_modelo()
 
 if modelo is None:
     st.error(f"❌ No se encontró: `{MODEL_PATH}`")
-    st.warning("📁 Coloca `modelo_eurosat.tflite` en la misma carpeta que `app.py`.")
+    st.warning("📁 Coloca `modelo_final_eurosat.keras` en la misma carpeta que `app.py`.")
     st.stop()
 
-st.markdown('<div class="info-card">✅ &nbsp;<b>Modelo TFLite cargado correctamente</b> — EfficientNetB0 con Fine-Tuning listo para inferencia</div>', unsafe_allow_html=True)
+st.markdown('<div class="info-card">✅ &nbsp;<b>Modelo cargado correctamente</b> — EfficientNetB0 con Fine-Tuning listo para inferencia</div>', unsafe_allow_html=True)
 
 # ============================================================
 # UPLOADER
@@ -184,17 +245,18 @@ if archivo is not None:
         st.markdown(
             f'<div style="color:#3a6a9f; font-size:0.78rem; text-align:center;">'
             f'Dimensiones originales: {img.size[0]} × {img.size[1]} px — Redimensionada a {IMG_SIZE} × {IMG_SIZE} px</div>',
-            suafe_allow_html=False # Corregido un typo visual nativo manteniendo compatibilidad html
+            unsafe_allow_html=True
         )
 
     with col_info:
         img_resized = img.resize((IMG_SIZE, IMG_SIZE))
-        img_array   = np.expand_dims(np.array(img_resized), axis=0)
+        img_array  = keras_image.img_to_array(img_resized)
+        img_array  = np.expand_dims(img_array, axis=0)
 
         with st.spinner("🔍 Procesando matriz espectral..."):
             inicio = time.time()
             try:
-                prediccion = predecir(modelo, img_array)
+                prediccion = modelo.predict(img_array, verbose=0)
             except Exception as e:
                 st.error(f"❌ Error durante la inferencia: {e}")
                 st.stop()
@@ -221,7 +283,7 @@ if archivo is not None:
 
         st.markdown("""
         <div class="info-card" style="margin-top:1.2rem;">
-            🤖 <b>Modelo:</b> EfficientNetB0 · Transfer Learning + Fine-Tuning · TFLite<br>
+            🤖 <b>Modelo:</b> EfficientNetB0 · Transfer Learning + Fine-Tuning<br>
             📊 <b>Dataset:</b> EuroSAT Sentinel-2 · 10 clases · 27,000 imágenes
         </div>
         """, unsafe_allow_html=True)
